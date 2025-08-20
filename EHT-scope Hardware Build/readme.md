@@ -10,6 +10,8 @@ The EHT assay device consists of several components:
 
 **Assembly of the EHT assay device.**
 
+Refer to ItemList.xlsx and EHT-scope-schematics.pdf
+
 1. **Assemble the EHT assay device frame (See Fig. 1)**
 
 Assemble the frame for the device using 80/20 10 series profiles, following the schematics in Fig. 1. Cut the profiles to length using a miter saw with a blade for cutting aluminum. This frame holds the mechanical stage above the camera and lens and below the pacing LEDs. The frame dimensions should be adjusted to fit the select XY stage.
