@@ -1,0 +1,532 @@
+// =========================================EHT-Acquire
+// William Pu, Boston Children's Hospital
+//
+// controls EHT image acquisition on multiwell plate
+// saves each well as folder of images, one folder per pacing rate named baseName_wellName_rate
+// metadata.txt within each image folder -- image metadata
+
+import ij.*;
+import ij;
+import ij.io.*;
+import ij.gui.GenericDialog;
+import ij.gui.*;
+import ij.process.ByteProcessor;
+import ij.process.ImageProcessor;
+import ij.process.ShortProcessor;
+import ij.ImagePlus;
+import ij.process.ImageStatistics;
+import ij.measure.Measurements;
+import java.lang.Math;
+import org.micromanager.api.PositionList;
+import org.micromanager.api.Autofocus;
+import org.micromanager.api.AcquisitionOptions;
+import org.micromanager.PositionListDlg;
+import org.micromanager.api.MultiStagePosition;
+import mmcorej.CharVector;
+import mmcorej.StrVector;
+import java.util.regex.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+// ============================================== Variables
+
+boolean debug = true; // false for no debug output
+String savePath; 		 // save directory
+fName = "Acquire-EHT"; // default save base name (space will be trimmed) -- customize for local setup
+int TransposeMirror = 1; // whether or not need to mirror the movement directions for this stage
+								// need to adjust for local setup
+// stage variables
+xyStage = mmc.getXYStageDevice();
+zStage = mmc.getFocusDevice();
+double currentX, currentY, currentZ;
+originX=-75385;
+originY=331012;
+double gapX=19500; // 24 w plate well spacing in microns
+double gapY=19500;
+
+// camera
+camera = mmc.getCameraDevice();
+double defaultExposure;
+boolean cameraAutoExposure = true; // whether or not to use camera autoexposure
+boolean removeFlag = true; // whether or not to remove extra frames from circular buffer
+// set to true if using camera continuous autoexposure;
+// set false if not available -- will then use software autoexposure (not debugged)
+String autoExposeType="Once"; // options are Once, Continous, or Off (for Basler camera)
+String cameraWidth="500";
+String cameraHeight="1000";
+
+// Arduino pacer interface
+String arduinoPort="Arduino"; 				// name of port for Arduino pacemaker device
+String arduinoAddress="COM6"; 	// address where the Arduino is attached
+
+
+//=================================================== Methods
+// plate object to keep track of position within plate
+
+plateMake(boolean[] wellPlan,double originXin, double originYin, double gapXin,double gapYin,xyStg,zStg) {	// returns a plate object
+	// set up variables of plate object
+
+	boolean[] wells = wellPlan; // boolean array of which wells to use
+	double gapX=gapXin; // 24 w plate well spacing in microns
+	double gapY=gapYin;
+	double originX=originXin; // replace with typical values for well A1 position, in microns
+	double originY=originYin;
+	double originZ=0;
+	wellOrder = new int[] {0,6,12,18,19,13,7,1,2,8,14,20,21,15,9,3,4,10,16,22,23,17,11,5}; // serpentine for efficiency
+	double[] xPos = new double[6];
+	double[] yPos = new double[4];
+	int currentWell; // the current position within wellOrder
+
+	xyStage=xyStg;
+	zStage=zStg;
+
+	for (x=0; x<6; x++) {
+		xPos[x]=x*gapX;
+	}
+	for (y=0; y<4; y++) {
+		yPos[y]=y*gapY;
+	}
+	// methods of plate object
+	findNextWell(int x) { // internal method, returns selected well >= x, -1 if no more
+		while (x<wells.length && wells[wellOrder[x]]==false ) {
+			x++;
+		}
+		if (x<wells.length) {
+			return(x);
+		} else {
+			return(-1);
+		}
+	}
+	setOrigin(double x,double y, double z) { // set origin
+		originX=x;
+		originY=y;
+		originZ=z;
+	}
+	getCurrentWellPosition() { // get currentWell X,Y position. Z position set to current z
+		x=xPos[wellOrder[currentWell] % 6] + originX;
+		y=yPos[(int) Math.floor(wellOrder[currentWell] / 6)] + originY;
+		MultiStagePosition p = new MultiStagePosition(xyStage,x,y,zStage,mmc.getPosition(zStage));
+		logOutput("current well X: "+x+" Y: "+y);
+		return(p);
+	}
+	nextWell() { // advance to next well, return well number if there is one, -1 if no more
+		currentWell=findNextWell(++currentWell);
+		return(getWell());
+	}
+	getWell() { // return well number if there is one, -1 if currentWell is not valid
+		if (currentWell>=0) {
+			return(wellOrder[currentWell]);
+		} else {
+			logOutput("invalid currentWell");
+			return(-1);
+		}
+	}
+	setToStart() { // reset to well A1
+		logOutput("Reset plate");
+		currentWell=0;
+		return(wellOrder[currentWell]);
+	}
+	// initialize plate object
+	currentWell=findNextWell(0); // find first selected well starting from and including 0
+	return(this);
+}
+
+// =============================================== Acquire one well
+
+boolean wellAcq(savePath,baseName,wellName,paceArray,nrFrames,secondsDelay,port,cameraAutoExposure) { // acquire well, return false if problem
+	double exposureMS;	// the exposure should be set by calling code to 1/fps (autoexp) or actual exposure value (manual exp)
+
+	int removed;
+
+	nrChannels = nrSlices = nrPositions = 1;
+
+	width = (int) mmc.getImageWidth();
+	height = (int) mmc.getImageHeight();
+	bytesPerPixel = (int) mmc.getBytesPerPixel();
+	bitDepth = (int) mmc.getImageBitDepth();
+	camera=mmc.getCameraDevice();
+
+	// pacer loop
+	logOutput("acquire one well "+cameraAutoExposure);
+	for (i=0; i<paceArray.length; i++) {
+		rate=Integer.parseInt(paceArray[i]);
+		logOutput("rate: "+rate);
+
+		// get exposure
+		exposureMS=mmc.getExposure();			// set by calling code
+		logOutput("exposure: "+exposureMS);
+		if (cameraAutoExposure) {					// use camera autoexposure
+			arduinoWhite(arduinoPort);					// turn on white light
+			mmc.sleep(500);
+			mmc.snapImage();	// snap an image to allow camera to adjust exposure
+		}
+
+		// turn on pacer
+		arduinoRun(arduinoPort,rate);	// run arduino at rate
+		// delay prior to starting acquisition
+		mmc.sleep(secondsDelay*1000);
+		// acquisition
+		logOutput("Starting acquisition nrFrames "+nrFrames);
+		String acquisitionName=baseName+"_"+wellName + "_"+String.valueOf(rate);
+		acqName = gui.getUniqueAcquisitionName(acquisitionName);
+		gui.openAcquisition(acqName, savePath,
+		nrFrames, nrChannels, nrSlices, nrPositions,
+		/* show */ false,
+		/* save */ true);  // will autosave to savePath
+		gui.initializeAcquisition(acqName, width, height, bytesPerPixel, bitDepth);
+		mmc.startSequenceAcquisition(nrFrames, 0, true);
+		frame = 0;
+		removed=0;
+		while (mmc.getRemainingImageCount() > 0 || mmc.isSequenceRunning(camera) ) {
+			if (mmc.getRemainingImageCount() > 0) {
+				img = mmc.popNextTaggedImage();
+				gui.addImageToAcquisition(acqName, frame, 0, 0, 0, img);
+				frame++;
+				while (removeFlag && mmc.getRemainingImageCount() > 0)	{			// getting multiple repeated images in the buffer.
+      			img=mmc.popNextTaggedImage();							// empty them out
+      			removed=removed+1;
+				}
+			}
+		}
+		mmc.stopSequenceAcquisition();
+		logOutput("Completed acquisition");
+
+		logOutput("turning off pacer");
+		arduinoStop(arduinoPort);								// stop pacer
+
+		logOutput("removed: "+removed);
+
+	} // close pacer loop
+	return(true);
+} // close wellAcq
+
+
+// =============================================== Arduino code for pacemaker
+//
+// arduino reads from serial port
+// cmd format is 4 letter code, optional 4 digit code, \r
+// cmds:
+// IDaa -- arduino returns "EHTarduino"
+// RUNaXXXX -- arduino turns on white light and pulses blue light at XXXX rate
+// STOP -- arduino stops pacing and turns off white light
+// WHIT -- arduino
+// FaUPXXXX -- camera up XXXX amt
+// FaDNXXXX -- camera down XXXX amt
+
+arduinoAttach(arduinoPort,arduinoAddress) {
+	try {
+		mmc.unloadDevice(arduinoPort);			// in case arduino device already attached
+	} catch(msg) {
+		logOutput("caught error: "+msg);
+	}
+	mmc.loadDevice(arduinoPort, "SerialManager", arduinoAddress);
+	mmc.setProperty(arduinoPort, "BaudRate",9600);
+	mmc.setProperty(arduinoPort, "AnswerTimeout",2000);
+	mmc.initializeDevice(arduinoPort);
+	print("Successfully set up Arduino");
+}
+
+boolean arduinoCheck(arduinoPort) { 						// check that Arduino is at port
+	mmc.setSerialPortCommand(arduinoPort,"IDaa","\r");
+//	answer=mmc.getSerialPortAnswer(arduinoPort,"\r\n");  // crashing micro-manager
+//	mmc.sleep(2000);
+//	answer=answer.trim();
+//	print(answer);
+//
+//	if (answer == "EHT")
+		return(true);
+//	else
+//		return(false);
+}
+
+arduinoRun(arduinoPort, rate) {							// arduino run at rate bpm
+	msg="RUNa";
+	val="0000"+rate;
+	msg=msg+val.substring(val.length()-4,val.length());
+	mmc.setSerialPortCommand(arduinoPort,msg,"\r");
+}
+
+arduinoStop(arduinoPort) {									// arduino stop
+	mmc.setSerialPortCommand(arduinoPort,"STOP","\r");
+}
+
+arduinoWhite(port) {									// turn on arduino white light
+	mmc.setSerialPortCommand(port,"WHIT","\r");
+}
+
+arduinoFocus(arduinoPort,val) {							// change arduino focus by val
+	if (val<0) {
+		val="0000"+(-1*val);
+		msg="FaDN";
+	} else {
+		val="0000"+val;
+		msg="FaUP";
+	}
+	msg=msg+val.substring(val.length()-4,val.length());
+	mmc.setSerialPortCommand(arduinoPort,msg,"\r");
+}
+
+// =============================================== Misc support functions
+logOutput(s) {
+	if (debug==true) {
+		print(s);
+	}
+	return;
+}
+
+//
+// =============================================== Initialization
+//
+// stage and camera
+//
+
+mmc.setProperty(xyStage,"TransposeMirrorX",TransposeMirror);
+mmc.setProperty(xyStage,"TransposeMirrorY",TransposeMirror);
+logOutput("current stage X="+mmc.getXPosition(xyStage)+", Y= "+mmc.getYPosition(xyStage));
+logOutput("origin X="+originX+", Y= "+originY);
+
+//
+// arduino
+//
+mmc.stopSequenceAcquisition(); // stop an active acquisition, e.g. live window
+
+arduinoAttach(arduinoPort,arduinoAddress); // attach arduino
+mmc.sleep(2000); // wait for arduino to reset after reconnecting usb
+if (!arduinoCheck(arduinoPort) ) { 			 // check that Arduino is properly set up
+	logOutput("fatal error: unable to connect to Arduino");
+	exit();
+} else logOutput("Arduino connected");
+
+// =============================================== Make initial dialog
+GenericDialog dlg = new GenericDialog("EHT Acquisition Parameters");
+
+gui.closeAllAcquisitions(); // close all active acquisitions
+
+// Dialog to get the capture parameters
+
+rowLabels = new String[] {"A","B","C","D"," "};
+columnLabels = new String[] {"1","2","3","4","5","6","-all-row"};
+
+maxwells=(rowLabels.length)*(columnLabels.length);
+
+boolean[] chkDefaults = new boolean[maxwells];
+boolean[] chkVals = new boolean[maxwells];
+boolean[] wells = new boolean[(rowLabels.length-1)*(columnLabels.length-1)];
+dlg.addMessage("Select the wells to image");
+
+for (i=0;i<chkDefaults.length;i++) {
+	chkDefaults[i]= false;
+}
+
+String[] labels = new String[maxwells];
+
+for (i=0; i < rowLabels.length; i++) {
+	for (j=0; j < columnLabels.length; j++) {
+		labels[(i*columnLabels.length)+j] = rowLabels[i]+columnLabels[j];
+	}
+}
+
+i=rowLabels.length-1;
+j=columnLabels.length-1;
+labels[(i*columnLabels.length)+j]="all";
+
+for (j=0; j < columnLabels.length-1; j++) {
+	labels[(i*columnLabels.length)+j] = "all-col"+columnLabels[j];
+}
+
+dlg.addCheckboxGroup(5,7, labels , chkDefaults);
+
+String[] wellChooser=new String[] {"Use above selection","Do not move stage"};
+dlg.addRadioButtonGroup("Stage control: ",wellChooser,1,2,"Use above selection");
+dlg.addMessage(" ");
+dlg.addStringField("Acquisition frames per second (integer): ","   30");
+dlg.addStringField("Pacing beats per minute per period (e.g. 60:120:150): ","   60");
+dlg.addStringField("Seconds delay for each well before beginning capture (integer): ","  10");
+dlg.addStringField("Seconds per period (integer): ","   30");
+dlg.addStringField("Microseconds for default exposure (double, 0=camera auto exp.): ","    0");
+dlg.addStringField("Basename of acquisition: ",fName);
+/*
+StrVector serialPorts;
+serialPorts=mmc.getAvailableDevices("SerialManager"); // get the ports avail to Serial Manager
+String[] serialPortsStrings = new String[serialPorts.size()];
+
+for (i=0; i<serialPorts.size(); i++) { 				// display them
+	logOutput(serialPorts.get(i));
+	serialPortsStrings[i]=serialPorts.get(i);
+}
+dlg.addRadioButtonGroup("Select Arduino port:", serialPortsStrings,1,(int)serialPorts.size(),"COM1");
+*/
+dlg.addStringField("well A1 position X: ",String.valueOf(originX));
+dlg.addStringField("well A1 position Y: ",String.valueOf(originY));
+dlg.addStringField("Movement between wellS, horizontal: ",String.valueOf(gapX));
+dlg.addStringField("Movement between wells, vertical: ",String.valueOf(gapY));
+dlg.addCheckbox("Set stage coordinates to well A1", false);
+
+dlg.addMessage("Fill in the values, focus, and press OK");
+dlg.showDialog();
+
+// If the dialog is cancelled, exit
+// otherwise recover the inputs in order of "appearance"
+if (dlg.wasCanceled() ) {
+	return;
+}
+
+for (i=0; i<rowLabels.length; i++) {
+	for (j=0; j<columnLabels.length; j++) {
+		chkVals[(i*columnLabels.length)+j] = dlg.getNextBoolean();
+	}
+}
+for (i=0; i<rowLabels.length-1; i++) {	// copy individual checkboxes to well positions
+	for (j=0; j<columnLabels.length-1; j++) {
+		wells[i*(columnLabels.length-1)+j]=chkVals[i*columnLabels.length+j];
+	}
+}
+if (chkVals[chkVals.length-1]==true) {	// check for all checkbox
+	for (i=0; i<wells.length; i++) {
+		wells[i]=true;
+	}
+}
+for (j=0; j<columnLabels.length-1; j++) { // check for all-col checkbox
+	if (chkVals[4*columnLabels.length+j]==true) {
+		for (i=0; i<rowLabels.length-1; i++) {
+			wells[i*(columnLabels.length-1)+j]=true;
+		}
+	}
+}
+for (i=0; i<rowLabels.length-1; i++) { // check for all-row checkbox
+	if (chkVals[i*columnLabels.length+columnLabels.length-1]==true) {
+		for (j=0; j<columnLabels.length-1; j++) {
+			wells[i*(columnLabels.length-1)+j]=true;
+		}
+	}
+}
+
+fps = Integer.parseInt(dlg.getNextString().trim());
+paceString = dlg.getNextString().trim();									// parse the pace String
+paceArray=paceString.split(":");
+secondsDelay = Integer.parseInt(dlg.getNextString().trim());
+secondsPerPeriod = Integer.parseInt(dlg.getNextString().trim());
+String s = dlg.getNextString().trim(); 									//default exposure
+defaultExposure=Double.valueOf(s);
+
+// set up the camera -- here customized for Basler camera
+camera = mmc.getCameraDevice();
+if (defaultExposure == 0) {
+	cameraAutoExposure=true;
+	defaultExposure=1000.0/(double)fps; 									// max possible exposure to keep frame rate
+} else {
+	cameraAutoExposure=false;
+}
+
+// file name and arduino port
+fName = dlg.getNextString(); 													// acquisition base file name
+fName.trim();
+
+String wellSelector=dlg.getNextRadioButton();							// use well selector or don't move stage
+if (wellSelector == "Use above selection") {
+	wellSelectorFlag = true;
+} else
+	wellSelectorFlag = false;
+
+//arduinoPort=dlg.getNextRadioButton();									// choice for arduino port
+
+if (debug==true) {
+	for (i=0; i<wells.length; i++) {
+		print(i + ": "+ wells[i]);
+	}
+	print("frames per second: "+fps);
+	print("pace string: "+paceString);
+	print("seconds per period: "+secondsPerPeriod);
+}
+
+
+// reset stage coordinates to A1? and x,y gaps
+
+originX=Integer.parseInt(dlg.getNextString().trim());
+originY=Integer.parseInt(dlg.getNextString().trim());
+gapX=Double.parseDouble(dlg.getNextString().trim());
+gapY=Double.parseDouble(dlg.getNextString().trim());
+resetStageCoord=dlg.getNextBoolean();
+
+print("gap x,y: "+gapX+", "+gapY);
+	
+// get save location
+DirectoryChooser chooser = new DirectoryChooser("Choose the output directory");
+savePath = chooser.getDirectory();
+baseName=fName;
+
+// write metadata to fName.txt;
+
+
+// initialize a plate object
+
+myPlate = plateMake(wells,originX,originY,gapX,gapY,xyStage,zStage);
+
+if (resetStageCoord) {
+	originX=mmc.getXPosition(xyStage);					// set current stage coordinate to origin
+	originY=mmc.getYPosition(xyStage);
+}
+
+myPlate.setOrigin(originX,originY,currentZ); 	// set stage origin
+logOutput("Origin: "+originX+", "+originY);
+
+wellNumber=myPlate.getWell();	// get start well number where 0-5:A1-A6; 6-11:B1-B6; 12-17:C1-C6; 18-23:D1-D6
+MultiStagePosition msp;
+
+// initialize camera -- for Basler Ace, may need to customize for other cameras
+
+mmc.setProperty(camera,"AcquisitionFramerate",fps); // set frame rate
+mmc.setProperty(camera,"AcquisitionFramerateEnable",1);
+mmc.setProperty(camera,"PixelType","Mono8");
+mmc.setProperty(camera,"SensorHeight",cameraHeight);
+mmc.setProperty(camera,"SensorWidth",cameraWidth);
+//mmc.setProperty(camera,"TriggerMode","On");  // crashes sequenceAcquisition
+//mmc.setProperty(camera,"TriggerSource","Line4");
+
+mmc.setExposure(defaultExposure);
+if (cameraAutoExposure==true) {
+	mmc.setProperty(camera,"ExposureAuto",autoExposeType);
+	logOutput("Exposure: "+autoExposeType);
+	arduinoWhite(arduinoPort);					// turn on white light
+	mmc.sleep(1000);
+	for (i=0; i<10; i++)
+		mmc.snapImage();	// snap a few images to allow camera to adjust exposure
+} else {
+	mmc.setProperty(camera,"ExposureAuto","Off");
+	mmc.setExposure(defaultExposure);
+	logOutput("Expsoure: Manual "+defaultExposure);
+}
+
+nrFrames=fps*secondsPerPeriod;
+
+if (wellSelectorFlag == true) {
+	// Move stage to selected locations and acquire data
+	logOutput("---- Starting acquisition ----");
+	while (wellNumber>=0) {
+		col=wellNumber % 6;
+		row=Math.floor(wellNumber / 6);
+		wellName=labels[(int)row*7+col];
+		logOutput("Well: "+wellName);
+		msp=myPlate.getCurrentWellPosition();
+		mmc.setXYPosition(xyStage,msp.getX(),msp.getY()); // move stage xy
+		mmc.waitForDevice(xyStage);
+	//	mmc.setPosition(zStage,msp.getZ()); // ignore z
+	//	mmc.waitForDevice(zStage);
+		wellAcq(savePath, baseName, wellName,paceArray,nrFrames,secondsDelay,arduinoPort,cameraAutoExposure); // acquisition for one well
+		wellNumber = myPlate.nextWell(); // go to the next selected well, moving along serpentine path
+	}
+	i=myPlate.setToStart();					// reset to first well
+	msp=myPlate.getCurrentWellPosition();
+	mmc.setXYPosition(xyStage,msp.getX(),msp.getY()); // move stage xy back to A1
+} else {											// don't move stage and do acquisition at current position
+	wellName="Current";
+	logOutput("Acquire current position");
+	wellAcq(savePath, baseName, wellName,paceArray,nrFrames,arduinoPort,cameraAutoExposure);
+}
+
+// mmc.setProperty(camera,"TriggerMode","Off");
+
+logOutput("done");
+logOutput("Data location: "+savePath);
+logOutput("Expt name: "+baseName);
+IJ.showMessage("Completed acquisition");
