@@ -1,7 +1,7 @@
 # EHT-scope
 **Engineered heart tissue imaging platform with acquisition and analysis software**
 
-The platform is designed to image engineered heart tissues suspended on flexible posts in a 24 well dish. The posts can be purchased from: https://dinabios.com/tools/ Silicon Rack C0001w.
+The platform is designed to image engineered heart tissues suspended on flexible posts in a 24 well dish. 
 
 * EHT-scope: instructions and schematics to build the imaging platform and install software.  
 * Code: EHT-controller: code for arduino, which runs the imaging platform focus and lights.  
