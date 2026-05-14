@@ -363,15 +363,22 @@ metadata_struct.Wells = wells;
 
 try
     json_txt = jsonencode(metadata_struct, 'PrettyPrint', true);
-    fid_json = fopen(json_file, 'w');
-    fprintf(fid_json, '%s', json_txt);
-    fclose(fid_json);
-    fprintf('Metadata sidecar saved to: %s\n', json_file);
+    [fid_json, msg] = fopen(json_file, 'w');
+    if fid_json == -1
+        warning('Could not open JSON file for writing: %s. Error: %s', json_file, msg);
+    else
+        fprintf(fid_json, '%s', json_txt);
+        fclose(fid_json);
+        fprintf('Metadata sidecar saved to: %s\n', json_file);
+    end
 catch ME
     warning('Could not generate JSON sidecar metadata. %s', ME.message);
 end
 
-fid = fopen(result_file, 'w');
+[fid, msg] = fopen(result_file, 'w');
+if fid == -1
+    error('FAILED TO SAVE RESULTS: Could not open %s for writing.\nReason: %s\nCheck if the folder exists and if the file is open in another program (like Excel).', result_file, msg);
+end
 
 fprintf(fid, 'Sample_Name\tWell_ID\tPacing_Rate_BPM\tPacing_Rate_Hz\tFrame\tTime_ms\tX1\tY1\tX2\tY2\n');
 

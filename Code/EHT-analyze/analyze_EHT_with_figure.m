@@ -48,8 +48,8 @@ raw_force = post_force2(post_deflections, tissue_heights, tissue_heights, post_r
 smooth_data = sgolayfilt(raw_force, p_order, w_size);
 
 % Remove outliers using Thompson's Tau method (matching original pipeline)
-[smooth_data, measurement_times, indout] = removeoutliers2(smooth_data, measurement_times, sens);
-raw_force = raw_force(indout);
+% [smooth_data, measurement_times, indout] = removeoutliers2(smooth_data, measurement_times, sens);
+% raw_force = raw_force(indout);
 
 sampling_freq = 1 / mean(diff(measurement_times));
 zm_force = smooth_data - mean(smooth_data);
@@ -150,11 +150,11 @@ for z = 1:length(maxima)-1
     tempr = [];
     templ = [];
 
-    while raw_force(r) > F10 && r<rlimit;
-        if (raw_force(r)<F90);
+    while smooth_data(r) > F10 && r<rlimit;
+        if (smooth_data(r)<F90);
             relaxpoints{z,2} = [relaxpoints{z,2} r];
             tempr = [tempr r];
-            if (raw_force(r)<F50 && isempty(Tr));
+            if (smooth_data(r)<F50 && isempty(Tr));
                 Tr = r;
             end
             r = r+1;
@@ -163,11 +163,11 @@ for z = 1:length(maxima)-1
         end
     end
 
-    while  raw_force(l) > F10 && l>llimit;
-        if (raw_force(l)<F90);
+    while  smooth_data(l) > F10 && l>llimit;
+        if (smooth_data(l)<F90);
             contractpoints{z,2} = [l contractpoints{z,2}];
             templ = [l templ];
-            if (raw_force(l)<F50 && isempty(Tl));
+            if (smooth_data(l)<F50 && isempty(Tl));
                 Tl = l;
             end
             l = l-1;
@@ -177,14 +177,14 @@ for z = 1:length(maxima)-1
     end
 
     if ~isempty(Tl) && ~isempty(Tr);
-        XL = raw_force(Tl:Tl+1);
-        XR = raw_force(Tr-1:Tr);
+        XL = smooth_data(Tl:Tl+1);
+        XR = smooth_data(Tr-1:Tr);
         Tlx = time(Tl:Tl+1);
         Trx = time(Tr-1:Tr);
         a=1;
         b=2;
         while (XR(1)==XR(2));
-            XL = [raw_force(Tl-a),raw_force(Tl+b)];
+            XL = [smooth_data(Tl-a),smooth_data(Tl+b)];
             Tlx = [time(Tl-a),time(Tl+b)];
             a=a+1;
             b=b+1;
@@ -192,7 +192,7 @@ for z = 1:length(maxima)-1
         a=1;
         b=2;
         while (XL(1) == XL(2));
-            XR = [raw_force(Tr-b),raw_force(Tr+a)];
+            XR = [smooth_data(Tr-b),smooth_data(Tr+a)];
             Trx = [time(Tr-b),time(Tr+a)];
             a=a+1;
             b=b+1;
@@ -201,8 +201,8 @@ for z = 1:length(maxima)-1
         T50r = interp1(XR,Trx,F50);
         T50vals(end+1,:) = [time(max_ind(z)),T50r-T50l,F50,time(max_ind(z))-T50l,T50r - time(max_ind(z))];
 
-        xl = raw_force(l:l+1);
-        xr = raw_force(r-1:r);
+        xl = smooth_data(l:l+1);
+        xr = smooth_data(r-1:r);
         tl = time(l:l+1);
         tr = time(r-1:r);
 
@@ -232,7 +232,7 @@ for z = 1:length(maxima)-1
 end
 
 if ~isempty(contractpoints) && ~isempty(relaxpoints)
-    slopes = calculate_slopes(measurement_times,raw_force,contractpoints,relaxpoints);
+    slopes = calculate_slopes(measurement_times,smooth_data,contractpoints,relaxpoints);
 else
     slopes = [NaN NaN NaN NaN];
 end
@@ -292,6 +292,28 @@ output = table(tissue_name, pacing_freqs, beating_rates, beating_rates_std,...
     t2peak_std, r90, r90_std, uv, uv_std, dv, dv_std);
 
 writetable(output, [file_name,'_result.txt'], 'FileType', 'text', 'Delimiter', '\t');
+
+% --- ADDED: Combined Results Logging ---
+[res_dir, ~, ~] = fileparts(file_name);
+master_file = fullfile(res_dir, 'Master_Results_Combined.csv');
+
+if ~exist(master_file, 'file')
+    % Create new file with headers
+    writetable(output, master_file);
+    fprintf('Created master results file: %s\n', master_file);
+else
+    % Append to existing file (MATLAB 2019b+ supports 'WriteMode', 'Append')
+    try
+        writetable(output, master_file, 'WriteMode', 'Append', 'WriteVariableNames', false);
+    catch
+        % Fallback for older MATLAB versions: read, concatenate, and write
+        master_data = readtable(master_file);
+        master_data = [master_data; output];
+        writetable(master_data, master_file);
+    end
+    fprintf('Appended results to master file: %s\n', master_file);
+end
+% ---------------------------------------
 
 figure(fig_num);
 clf;

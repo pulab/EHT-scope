@@ -11,14 +11,19 @@ Make sure your data is organized correctly on your computer:
 ---
 
 ## 2. Step 1: Tracking the Tissue (Motion Tracking)
-To identify the posts in your video, run the following command in the MATLAB Command Window:
+To identify the posts in your video, run the following command in the MATLAB Command Window. 
+
+**Note**: You must be in the main project folder.
 
 ```matlab
-% Example for tracking Well A1
-EHT_motion_tracker('Templates', 'TestingData', 'Results', true, 'EHT_config.m', true, {'Acquire-EHT_A1_0'});
+% 1. Add the code folder to your MATLAB path
+addpath('Code/EHT-analyze');
+
+% 2. Run the tracking command (This example tracks ALL folders in TestingData)
+EHT_motion_tracker('Templates', 'TestingData', 'Results', true, 'Code/EHT-analyze/EHT_config.m', true, {});
 ```
-*   **Post Selection**: A window will open. Click and drag boxes around the **left post** and **right post**.
-*   **Subsequent Videos**: You only need to draw the boxes once per well.
+*   **Post Selection**: A window will open for each new well. Click and drag boxes around the **left post** and **right post**.
+*   **Automatic Matching**: The software will automatically apply your boxes to all pacing rates (0, 60, 120) for that well.
 
 ---
 
@@ -26,10 +31,11 @@ EHT_motion_tracker('Templates', 'TestingData', 'Results', true, 'EHT_config.m', 
 Once tracking is finished, run the analysis command:
 
 ```matlab
-% Example for analyzing Well A1 at 1 Hz
-analyze_EHT_with_figure('Results/Results_File_Name.tsv', 67, 1.0, 'EHT_config.m', 1);
+% Example for analyzing Well A1 at 1 Hz (60 BPM)
+analyze_EHT_with_figure('Results/Results_TIMESTAMP.tsv', 67, 1.0, 'Code/EHT-analyze/EHT_config.m', 1);
 ```
-*   **Output**: Final metrics are saved in the `Results` folder as `.txt` files.
+*   **Individual Results**: Saved in the `Results` folder as `.txt` files for each tissue.
+*   **Combined Results**: A master file named **`Master_Results_Combined.csv`** is automatically updated in the `Results` folder every time you run an analysis. This contains all your data in one big spreadsheet.
 
 ---
 

@@ -37,7 +37,7 @@ function config = get_default_config()
 
 config.pixel_size = 6.5;
 % IMPORTANT: Legacy-compatible default uses pixels/mm.
-% Keep this aligned with EHT_config.m unless intentionally changed.
+% Keep this aligned with EHT_config_corrected.m unless intentionally changed.
 config.pixel_size = 67;
 
 config.post_radius = 1.0;
