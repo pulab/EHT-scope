@@ -37,7 +37,7 @@ function config = get_default_config()
 
 config.pixel_size = 6.5;
 % IMPORTANT: Legacy-compatible default uses pixels/mm.
-% Keep this aligned with EHT_config_corrected.m unless intentionally changed.
+% Keep this aligned with EHT_config.m unless intentionally changed.
 config.pixel_size = 67;
 
 config.post_radius = 1.0;
@@ -60,7 +60,7 @@ config.min_distance = 30;
 config.peak_threshold = 1.0;
 config.outlier_sensitivity = 10;
 config.sg_poly_order = 4;
-config.sg_window_size = 11;
+config.sg_window_size = 5;
 
 end
 

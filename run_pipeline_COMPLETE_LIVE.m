@@ -7,7 +7,7 @@ CODE_DIR     = fullfile(BASE, 'Code', 'EHT-analyze');
 template_path = fullfile(BASE, 'Templates');
 data_path    = fullfile(BASE, 'TestingData');
 result_path  = fullfile(BASE, 'Final_Hybrid_Validation');
-config_file  = fullfile(CODE_DIR, 'EHT_config_corrected.m');
+config_file  = fullfile(CODE_DIR, 'EHT_config.m');
 
 if ~exist(result_path, 'dir'); mkdir(result_path); end
 addpath(CODE_DIR); addpath(BASE);
