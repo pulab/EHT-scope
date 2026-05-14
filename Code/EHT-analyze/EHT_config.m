@@ -23,4 +23,4 @@ config.peak_threshold = 1.0; % Increased to 1.0 to match legacy Analyze_logs_EHT
 config.outlier_sensitivity = 10; % Reverted to 10 to match legacy Analyze_logs_EHT.m
 
 config.sg_poly_order = 4;
-    config.sg_window_size = 5;
+    config.sg_window_size = 11;
