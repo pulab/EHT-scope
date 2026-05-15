@@ -352,7 +352,7 @@ end
 function write_results_v2(results, result_path, wells, data_path, config)
 
 timestamp_str = datestr(now, 'dd-mmm-yyyy_(HH-MM-SS)');
-result_file = fullfile(result_path, sprintf('Results_%s.tsv', timestamp_str));
+result_file = fullfile(result_path, sprintf('Results_%s.txt', timestamp_str));
 json_file = fullfile(result_path, sprintf('Metadata_%s.json', timestamp_str));
 
 % Save Config and metadata inside JSON sidecar for reproducibility

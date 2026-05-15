@@ -1,16 +1,36 @@
-results_folder = 'C:\Users\kusha\Downloads\11.11.25 EHT\EHT-scope-main\Results';
-
-config_file = 'EHT_config_corrected.m';
+% =========================================================
+% USER CONFIGURATION — edit these two lines before running
+% =========================================================
+results_folder = input('Enter the full path to your Results folder: ', 's');
+config_file    = 'EHT_config_corrected.m';
+% =========================================================
 
 fprintf('=== Multi-Pacing Force Analysis ===\n');
+
+if ~exist(results_folder, 'dir')
+    error('Results folder not found: %s\nPlease check the path and try again.', results_folder);
+end
 
 result_files = dir(fullfile(results_folder, 'Results_*.txt'));
 if isempty(result_files)
     error('No Results_*.txt files found in %s', results_folder);
 end
 
-[~, idx] = max([result_files.datenum]);
-results_file = fullfile(results_folder, result_files(idx).name);
+if length(result_files) == 1
+    results_file = fullfile(results_folder, result_files(1).name);
+else
+    fprintf('Multiple result files found:\n');
+    for k = 1:length(result_files)
+        fprintf('  [%d] %s\n', k, result_files(k).name);
+    end
+    choice = input('Enter the number of the file to load (or 0 for most recent): ');
+    if choice == 0 || choice < 1 || choice > length(result_files)
+        [~, idx] = max([result_files.datenum]);
+        results_file = fullfile(results_folder, result_files(idx).name);
+    else
+        results_file = fullfile(results_folder, result_files(choice).name);
+    end
+end
 
 fprintf('Loading results from: %s\n\n', results_file);
 
