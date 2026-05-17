@@ -2,7 +2,7 @@
 % USER CONFIGURATION — edit these two lines before running
 % =========================================================
 results_folder = input('Enter the full path to your Results folder: ', 's');
-config_file    = 'EHT_config_corrected.m';
+config_file    = 'EHT_config.m';
 % =========================================================
 
 fprintf('=== Multi-Pacing Force Analysis ===\n');
