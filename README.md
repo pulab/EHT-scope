@@ -26,3 +26,17 @@ The platform is designed to image engineered heart tissues suspended on flexible
 
 See `Code/EHT-analyze/README.md` for detailed usage instructions and **critical template-drawing guidelines.**
 
+## Example Data and Results
+
+Example image sequences and representative results are available in the latest GitHub release:
+
+https://github.com/pulab/EHT-scope/releases/latest
+
+Download `Supplementary Data 4.zip` from the release assets. The archive contains:
+
+- `Analysis_Code`: analysis code included with the supplementary package
+- `Representative_Image_Sequences`: example raw image sequences
+- `Results`: representative tracking and force-analysis output files
+
+To run the example data, extract the zip file, add `Code/EHT-analyze` to the MATLAB path, and use the extracted `Representative_Image_Sequences` folder as the input data folder.
+

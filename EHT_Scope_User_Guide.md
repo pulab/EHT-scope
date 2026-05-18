@@ -8,6 +8,12 @@ Make sure your data is organized correctly on your computer:
 *   **Raw Videos**: Place your video folders inside the `TestingData` folder.
 *   **Folder Names**: Ensure folders are named like this: `Acquire-EHT_WellName_PacingRate` (Example: `Acquire-EHT_A1_60`).
 
+For the manuscript example data and results, download `Supplementary Data 4.zip` from the latest GitHub release:
+
+https://github.com/pulab/EHT-scope/releases/latest
+
+After extracting the zip file, use `Representative_Image_Sequences` as the input data folder. The `Results` folder contains representative tracking and force-analysis outputs.
+
 ---
 
 ## 2. Step 1: Tracking the Tissue (Motion Tracking)
@@ -31,11 +37,11 @@ EHT_motion_tracker('Templates', 'TestingData', 'Results', true, 'Code/EHT-analyz
 Once tracking is finished, run the analysis command:
 
 ```matlab
-% Example for analyzing Well A1 at 1 Hz (60 BPM)
-analyze_EHT_with_figure('Results/Results_TIMESTAMP.tsv', 67, 1.0, 'Code/EHT-analyze/EHT_config.m', 1);
+multi_pacing_analysis
 ```
-*   **Individual Results**: Saved in the `Results` folder as `.txt` files for each tissue.
-*   **Combined Results**: A master file named **`Master_Results_Combined.csv`** is automatically updated in the `Results` folder every time you run an analysis. This contains all your data in one big spreadsheet.
+When prompted, enter the full path to the `Results` folder created by the motion-tracking step.
+*   **Individual Results**: Saved in the `Results` folder as `.txt` files for each tissue and pacing rate.
+*   **Figures**: Saved in the `Results` folder as MATLAB `.fig` files.
 
 ---
 

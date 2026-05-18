@@ -16,7 +16,8 @@ data_path = 'C:/RawData/';           % Folder with video folders
 result_path = 'C:/Results/';         % Where to save results
 perform_annotation = true;           % Set to false if templates already exist
 
-EHT_motion_tracker(template_path, data_path, result_path, perform_annotation);
+EHT_motion_tracker(template_path, data_path, result_path, perform_annotation, ...
+                   'Code/EHT-analyze/EHT_config.m', true, {});
 ```
 
 **Input folders must be named:** `Acquire-EHT_WellID_PacingRate`
@@ -43,13 +44,22 @@ multi_pacing_analysis
 ```
 
 This script automatically:
-1.  Finds the most recent results file in the `Results` folder.
-2.  Analyzes each well at each pacing rate.
-3.  Generates figures and result text files.
+1.  Prompts for the full path to the `Results` folder.
+2.  Loads the selected `Results_*.txt` tracking file.
+3.  Analyzes each well at each pacing rate.
+4.  Generates figures and result text files.
 
 **Output:**
 - `[Well]_[Rate]BPM_temp_result.txt` - Force metrics
 - `[Well]_[Rate]BPM_temp_fig.fig` - Force vs Time plot
+
+### Example Data
+
+Example image sequences and representative results are available in `Supplementary Data 4.zip` on the latest GitHub release:
+
+https://github.com/pulab/EHT-scope/releases/latest
+
+After extracting the zip file, use `Representative_Image_Sequences` as the motion-tracking input folder. The included `Results` folder contains representative output files.
 
 ---
 
