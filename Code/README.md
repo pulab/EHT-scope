@@ -1,21 +1,21 @@
 # EHT-scope Code - MATLAB Workflow
-Author: Kushaan Sharma
+Authors: William Pu (EHT-acquire) and Kushaan Sharma (EHT-scope).
 
 This folder contains all the code for the EHT-scope platform using a unified MATLAB workflow.
 
 ## Overview
 
 The workflow consists of three main stages:
-1. **Image Acquisition** - Automated imaging via MicroManager (BeanShell)
-2. **Motion Tracking** - Post position tracking using MATLAB Image Processing Toolbox
-3. **Force Analysis** - Physiological parameter calculation in MATLAB
+1. **Image Acquisition** - EHT-acquire: Automated imaging via MicroManager (BeanShell)
+2. **Motion Tracking** - EHT-scope: Post position tracking using MATLAB Image Processing Toolbox
+3. **Motion Analysis** - EHT-scope: Physiological parameter calculation in MATLAB
 
 ## Files
 
-### Arduino Controller
+### EHT-acquire
+#### Arduino Controller
 - **EHT_controller.ino**: Arduino sketch for controlling optical pacer, focus motor, and illumination
-
-### Acquisition
+#### Acquisition
 - **EHT_acqure_v2.bsh**: BeanShell script for automated acquisition via MicroManager
 
 ### Motion Tracking (MATLAB)
@@ -39,7 +39,7 @@ The workflow consists of three main stages:
 - Image Processing Toolbox
 
 ### MicroManager (for acquisition only)
-- MicroManager 2.0 or later
+- MicroManager 1.4
 - Compatible camera and motorized stage
 
 ## Quick Start
