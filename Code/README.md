@@ -17,6 +17,7 @@ The workflow consists of three main stages:
 - **EHT_controller.ino**: Arduino sketch for controlling optical pacer, focus motor, and illumination
 #### Acquisition
 - **EHT_acqure_v2.bsh**: BeanShell script for automated acquisition via MicroManager
+- **BaslerCameraInitialize.bsh**: BeanShell script to initialize the Basler Camera
 
 ### Motion Tracking (MATLAB)
 - **EHT-analyze/EHT_motion_tracker.m**: Main motion tracking function
