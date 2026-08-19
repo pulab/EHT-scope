@@ -7,11 +7,12 @@ The platform is designed to image engineered heart tissues suspended on flexible
 
 * **EHT-scope Hardware Build**: Instructions and schematics to build the imaging platform
 * **Code**: Software for acquisition, tracking, and analysis
+  * **EHT-acquire**: Code for data acquisition using EHT-scope hardware
   * **EHT-analyze**: MATLAB scripts to analyze post positions and calculate physiological parameters
 
 ## Workflow (MATLAB-Based)
 
-1.  **Acquisition**: Automated 24-well plate imaging with pacing protocols
+1.  **Acquisition**: (`EHT-acquire_v2.bsh`): Automated 24-well plate imaging with pacing protocols using EHT-scope hardware
 2.  **Motion Tracking** (`EHT_motion_tracker.m`): Template-based post position tracking
 3.  **Force Analysis** (`multi_pacing_analysis.m`): Calculate force, contraction/relaxation kinetics, and beat metrics
 
