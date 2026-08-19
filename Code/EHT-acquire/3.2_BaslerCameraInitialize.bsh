@@ -1,0 +1,10 @@
+// initialize Basler Camera
+sensorWidth=600; // standard setting =500
+sensorHeight=1000; // standard setting =1000
+camera = mmc.getCameraDevice();
+mmc.setProperty(camera,"AcquisitionFramerate","30");
+mmc.setProperty(camera,"ExposureAuto","Continuous");
+mmc.setProperty(camera,"SensorWidth",sensorWidth);
+mmc.setProperty(camera,"SensorHeight",sensorHeight);
+mmc.setProperty(camera,"ReverseX","1");
+print("Basler Camera set to 30 fps, continuous auto exposure, "+sensorWidth+" x "+sensorHeight+"  sensor");
