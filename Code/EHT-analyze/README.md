@@ -50,8 +50,10 @@ This script automatically:
 4.  Generates figures and result text files.
 
 **Output:**
-- `[Well]_[Rate]BPM_temp_result.txt` - Force metrics
+- `[Well]_[Rate]BPM_temp_result.txt` - Force metrics (each column header includes its units, e.g. `dias_forces_mN`, `t50_s`, `beating_rates_Hz`)
 - `[Well]_[Rate]BPM_temp_fig.fig` - Force vs Time plot
+
+Output units (force in mN, time in s, rates in Hz) assume the input parameter units documented in the comments of `EHT_config.m` (distances in mm, Young's modulus in MPa).
 
 ### Example Data
 

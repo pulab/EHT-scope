@@ -291,6 +291,15 @@ output = table(tissue_name, pacing_freqs, beating_rates, beating_rates_std,...
     dev_forces, dev_forc_std, t50, t50_std, c50, c50_std, r50, r50_std, t2peak, ...
     t2peak_std, r90, r90_std, uv, uv_std, dv, dv_std);
 
+% Units in the column names assume the input units documented in EHT_config.m
+% (distances in mm, Young's modulus in MPa): force in mN, time in s, rates in Hz.
+output.Properties.VariableNames = {'tissue_name', 'pacing_freqs_Hz', ...
+    'beating_rates_Hz', 'beating_rates_std_Hz', 'beat_rate_cov_unitless', ...
+    'dias_forces_mN', 'dias_forc_st_mN', 'syst_forces_mN', 'syst_forces_st_mN', ...
+    'dev_forces_mN', 'dev_forc_std_mN', 't50_s', 't50_std_s', 'c50_s', 'c50_std_s', ...
+    'r50_s', 'r50_std_s', 't2peak_s', 't2peak_std_s', 'r90_s', 'r90_std_s', ...
+    'uv_mN_per_s', 'uv_std_mN_per_s', 'dv_mN_per_s', 'dv_std_mN_per_s'};
+
 writetable(output, [file_name,'_result.txt'], 'FileType', 'text', 'Delimiter', '\t');
 
 % --- ADDED: Combined Results Logging ---
@@ -308,6 +317,11 @@ else
     catch
         % Fallback for older MATLAB versions: read, concatenate, and write
         master_data = readtable(master_file);
+        if width(master_data) == width(output)
+            % Keep the existing file's headers (e.g. a master file created
+            % before units were added to the column names)
+            output.Properties.VariableNames = master_data.Properties.VariableNames;
+        end
         master_data = [master_data; output];
         writetable(master_data, master_file);
     end
