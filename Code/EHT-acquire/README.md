@@ -5,7 +5,7 @@
 ## EHT_controller.ino
 - arduino sketch to run the arduino user interface of EHT-scope
 
-## EHT_acquire_v2.bsh
+## EHT-acquire_v2.3.bsh
 - Micromanager 1.4 beanshell script for automated acquisition
 
 ## BaslerCameraInitialize.bsh

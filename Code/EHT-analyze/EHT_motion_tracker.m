@@ -272,24 +272,55 @@ end
 
 
 function timestamps = process_metadata(metadata_path)
+% Frame times in ms from Micro-Manager metadata.txt. TimeReceivedByCore (when
+% Micro-Manager received the frame from the camera) is used when every frame
+% has it; ElapsedTime-ms is used otherwise, as it is occasionally stamped up
+% to ~90 ms late. Each time is read from its own FrameKey entry.
 
 fid = fopen(metadata_path, 'r');
 content = fread(fid, '*char')';
 fclose(fid);
 
-frame_pattern = 'FrameKey-(\d+)-0-0';
-time_pattern = '"ElapsedTime-ms":\s*(\d+)';
+[frame_matches, starts] = regexp(content, '"FrameKey-(\d+)-0-0"', 'tokens', 'start');
+starts(end + 1) = length(content) + 1;
+n = length(frame_matches);
+frame_nums = zeros(n, 1);
+received = nan(n, 1);
+elapsed = nan(n, 1);
 
-frame_matches = regexp(content, frame_pattern, 'tokens');
-time_matches = regexp(content, time_pattern, 'tokens');
+for i = 1:n
+    entry = content(starts(i):starts(i + 1) - 1);
+    frame_nums(i) = str2double(frame_matches{i}{1});
+    r = regexp(entry, ['"TimeReceivedByCore":\s*"(\d{4})-(\d\d)-(\d\d) ' ...
+                       '(\d\d):(\d\d):(\d\d(?:\.\d+)?)'], 'tokens', 'once');
+    if ~isempty(r)
+        v = str2double(r(1:6));
+        received(i) = datenum(v(1), v(2), v(3)) * 86400000 + ...
+                      (v(4) * 3600 + v(5) * 60 + v(6)) * 1000;
+    end
+    e = regexp(entry, '"ElapsedTime-ms":\s*(\d+(?:\.\d+)?)', 'tokens', 'once');
+    if ~isempty(e)
+        elapsed(i) = str2double(e{1});
+    end
+end
+
+if n > 0 && all(~isnan(received))
+    frame_times = received - min(received);
+    fprintf('  Frame times from TimeReceivedByCore\n');
+else
+    frame_times = elapsed;
+    fprintf('  Frame times from ElapsedTime-ms\n');
+end
 
 timestamps = struct();
 
-for i = 1:min(length(frame_matches), length(time_matches))
-    frame_num = str2double(frame_matches{i}{1});
-    elapsed_time = str2double(time_matches{i}{1});
+for i = 1:n
+    if isnan(frame_times(i))
+        continue;
+    end
+    frame_num = frame_nums(i);
 
-    timestamps(frame_num + 1).time = elapsed_time;
+    timestamps(frame_num + 1).time = frame_times(i);
     timestamps(frame_num + 1).x1 = 0;
     timestamps(frame_num + 1).y1 = 0;
     timestamps(frame_num + 1).x2 = 0;
@@ -402,7 +433,7 @@ for i = 1:length(folder_names)
                 timestamps = results.(valid_name);
 
                 for frame = 1:length(timestamps)
-                    fprintf(fid, '%s\t%s\t%d\t%.4f\t%d\t%d\t%.1f\t%.1f\t%.1f\t%.1f\n', ...
+                    fprintf(fid, '%s\t%s\t%d\t%.4f\t%d\t%.3f\t%.1f\t%.1f\t%.1f\t%.1f\n', ...
                             folder_name, ...
                             well_id_parsed, ...
                             rate_bpm, ...

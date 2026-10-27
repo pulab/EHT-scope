@@ -60,12 +60,17 @@ config.min_distance = 30;
 config.peak_threshold = 1.0;
 config.outlier_sensitivity = 10;
 config.sg_poly_order = 4;
-config.sg_window_size = 5;
+config.sg_window_s = 0.35;
 
 end
 
 
 function config = validate_config(config)
+
+if isfield(config, 'sg_window_size') && ~isfield(config, 'sg_window_s')
+    warning(['sg_window_size (frames) is no longer used. Set sg_window_s, the ' ...
+             'smoothing window in seconds (0.35 s is about 11 frames at 30 fps).']);
+end
 
 default_config = get_default_config();
 required_fields = fieldnames(default_config);

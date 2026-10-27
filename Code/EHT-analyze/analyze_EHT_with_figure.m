@@ -16,7 +16,7 @@ tissue_heights = config.tissue_height;
 thresh = config.peak_threshold;
 sens = config.outlier_sensitivity;
 p_order = config.sg_poly_order;
-w_size = config.sg_window_size;
+window_s = config.sg_window_s;
 
 log = readtable(file_name);
 
@@ -36,6 +36,13 @@ measurement_times = log(post_distances~=0,1);
 measurement_times = measurement_times - min(measurement_times);
 post_distances = post_distances(post_distances~=0);
 
+% Frames are not evenly spaced when frames are dropped during acquisition;
+% every step below uses the recorded frame times
+frame_dt = diff(measurement_times);
+is_gap = frame_dt > 1.75*median(frame_dt);
+fprintf('  Frame interval: %.1f ms, %d gaps from dropped frames, longest %.0f ms\n', ...
+    1000*mean(frame_dt(~is_gap)), sum(is_gap), 1000*max(frame_dt));
+
 actual_diastolic_dist = diastolicdist;
 fprintf('  Using fixed diastolic distance: %.3f mm\n', actual_diastolic_dist);
 
@@ -43,24 +50,13 @@ fprintf('  Using fixed diastolic distance: %.3f mm\n', actual_diastolic_dist);
 
 total_deflections = actual_diastolic_dist - post_distances;
 post_deflections = total_deflections / 2;
-raw_force = post_force2(post_deflections, tissue_heights, tissue_heights, post_radius);
+raw_force = post_force2(post_deflections, tissue_heights, tissue_heights, post_radius, config);
 
-smooth_data = sgolayfilt(raw_force, p_order, w_size);
+smooth_data = sgolay_time(measurement_times, raw_force, p_order, window_s);
 
 % Remove outliers using Thompson's Tau method (matching original pipeline)
 % [smooth_data, measurement_times, indout] = removeoutliers2(smooth_data, measurement_times, sens);
 % raw_force = raw_force(indout);
-
-sampling_freq = 1 / mean(diff(measurement_times));
-zm_force = smooth_data - mean(smooth_data);
-L = length(smooth_data);
-NFFT = 2^nextpow2(L);
-fc = fft(zm_force, NFFT)/L;
-nfft_half = floor(NFFT/2) + 1;
-fc = 2*abs(fc(1:nfft_half));
-f = sampling_freq/2 * linspace(0, 1, nfft_half);
-[max_fc, max_i] = max(fc);
-beating_freqs = f(max_i);
 
 [max_t, maxima, min_t, minima] = detect_maxmin(measurement_times, smooth_data, thresh);
 indices = 1:length(smooth_data);

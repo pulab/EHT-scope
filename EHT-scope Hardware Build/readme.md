@@ -9,11 +9,11 @@ The EHT assay device consists of several components:
 - Force analysis in MATLAB (analyze_EHT), which analyzes post position vs time to calculate contraction and relaxation kinetics and force.
 
 **Software Workflow:**
-1. Image acquisition: MicroManager with BeanShell script (`EHT_acqure_v2.bsh`)
+1. Image acquisition: MicroManager with BeanShell script (`EHT-acquire_v2.3.bsh`)
 2. Motion tracking: MATLAB (`EHT_motion_tracker.m`)
-3. Force analysis: MATLAB (`analyze_EHT.m`)
+3. Force analysis: MATLAB (`multi_pacing_analysis.m`)
 
-All analysis is now performed in MATLAB for a unified workflow. See `Code/README_MATLAB.md` for detailed software documentation.
+All analysis is now performed in MATLAB for a unified workflow. See `Code/README.md` for detailed software documentation.
 
 **Assembly of the EHT assay device.**
 
@@ -65,15 +65,15 @@ Install MATLAB (R2016b or later) with the following toolboxes:
 
 The MATLAB code for motion tracking and force analysis is located in the `Code/EHT-analyze/` folder:
 - **EHT_motion_tracker.m** - Analyzes EHT video images and yields a table of position vs time
-- **EHT_motion_tracker_gui.m** - GUI interface for motion tracking
-- **analyze_EHT.m** - Analyzes post position vs time to calculate contraction/relaxation kinetics and force
+- **multi_pacing_analysis.m** - Analyzes post position vs time to calculate contraction/relaxation kinetics and force
 
 **Quick Start:**
 ```matlab
 % In MATLAB, navigate to Code/EHT-analyze/
-EHT_motion_tracker_gui()  % Run motion tracking with GUI
+EHT_motion_tracker()     % Track post positions
+multi_pacing_analysis    % Calculate force and kinetics
 ```
 
-See `Code/README_MATLAB.md` for detailed installation and usage instructions.
+See `Code/README.md` for detailed installation and usage instructions.
 
 **Note:** The previous ImageJ/Fiji-based workflow has been replaced with a unified MATLAB workflow for easier use and better integration.

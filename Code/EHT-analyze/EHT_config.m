@@ -28,4 +28,4 @@ config.peak_threshold = 1.0; % dimensionless (multiple of the force signal's sta
 config.outlier_sensitivity = 10; % dimensionless (Thompson tau sensitivity); reverted to 10 to match legacy Analyze_logs_EHT.m
 
 config.sg_poly_order = 4;           % dimensionless (Savitzky-Golay polynomial order)
-    config.sg_window_size = 11;     % frames (Savitzky-Golay window length, must be odd)
+config.sg_window_s = 0.35;          % s (Savitzky-Golay window length in time; 0.35 s holds about 11 frames at 30 fps)

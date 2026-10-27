@@ -8,9 +8,9 @@ Make sure your data is organized correctly on your computer:
 *   **Raw Videos**: Place your video folders inside the `TestingData` folder.
 *   **Folder Names**: Ensure folders are named like this: `Acquire-EHT_WellName_PacingRate` (Example: `Acquire-EHT_A1_60`).
 
-For the manuscript example data and results, download `Supplementary Data 4.zip` from the latest GitHub release:
+For the manuscript example data and results, download `Supplementary.Data.4.zip` from GitHub release v2.3:
 
-https://github.com/pulab/EHT-scope/releases/latest
+https://github.com/pulab/EHT-scope/releases/tag/v2.3
 
 After extracting the zip file, use `Representative_Image_Sequences` as the input data folder. The `Results` folder contains representative tracking and force-analysis outputs.
 

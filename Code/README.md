@@ -16,7 +16,7 @@ The workflow consists of three main stages:
 #### Arduino Controller
 - **EHT_controller.ino**: Arduino sketch for controlling optical pacer, focus motor, and illumination
 #### Acquisition
-- **EHT_acqure_v2.bsh**: BeanShell script for automated acquisition via MicroManager
+- **EHT-acquire_v2.3.bsh**: BeanShell script for automated acquisition via MicroManager
 - **BaslerCameraInitialize.bsh**: BeanShell script to initialize the Basler Camera
 
 ### Motion Tracking (MATLAB)
@@ -28,10 +28,13 @@ The workflow consists of three main stages:
 - **EHT-analyze/post_force2.m**: Force calculation from post deflection
 - **EHT-analyze/find_pv7.m**: Peak and valley detection
 - **EHT-analyze/peakdet2.m**: Peak detection algorithm
-- **EHT-analyze/sgolayfilt.m**: Savitzky-Golay filter
+- **EHT-analyze/sgolay_time.m**: Savitzky-Golay filter over a fixed time window
 - **EHT-analyze/analyze_slopes.m**: Contraction/relaxation slope analysis
 - **EHT-analyze/detect_maxmin.m**: Helper wrapper function
 - **EHT-analyze/calculate_slopes.m**: Helper wrapper function
+
+### Videos (Python, optional)
+- **EHT-analyze/mm2vfr.py**: Videos with a scale bar and timer from the image sequences (see EHT-analyze/README.md)
 
 ## Requirements
 
@@ -46,7 +49,7 @@ The workflow consists of three main stages:
 ## Quick Start
 
 ### 1. Acquisition
-Run `EHT_acqure_v2.bsh` in MicroManager to capture images.
+Run `EHT-acquire_v2.3.bsh` in MicroManager to capture images.
 
 ### 2. Motion Tracking
 ```matlab
