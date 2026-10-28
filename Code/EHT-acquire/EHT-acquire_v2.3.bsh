@@ -1,0 +1,558 @@
+// ============================================================================
+// Acquire-EHT v2.3
+// Micro-Manager 1.4 BeanShell script: paced EHT video acquisition across a
+// 24-well plate, with an Arduino pacer and white-light control.
+//
+// Notes
+//  - Micro-Manager keeps function definitions from earlier script runs until
+//    it is quit. Restart Micro-Manager before running this script if a
+//    different version of it was run in the same session.
+//  - Set Tools > Options > Sequence buffer size large enough for one
+//    recording (frames x image size); the script warns if it is too small.
+//  - Exposure (manual entry) is in milliseconds and is limited to 80% of
+//    the frame interval so the camera can reach the requested frame rate.
+// ============================================================================
+
+import ij.*;
+import ij;
+import ij.io.*;
+import ij.gui.GenericDialog;
+import ij.gui.*;
+import ij.process.ByteProcessor;
+import ij.process.ImageProcessor;
+import ij.process.ShortProcessor;
+import ij.ImagePlus;
+import ij.process.ImageStatistics;
+import ij.measure.Measurements;
+import java.lang.Math;
+import org.micromanager.api.PositionList;
+import org.micromanager.api.Autofocus;
+import org.micromanager.api.AcquisitionOptions;
+import org.micromanager.PositionListDlg;
+import org.micromanager.api.MultiStagePosition;
+import mmcorej.CharVector;
+import mmcorej.StrVector;
+import java.util.regex.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+boolean debug = true;
+String savePath;
+fName = "Acquire-EHT";
+int TransposeMirror = 1;
+
+xyStage = mmc.getXYStageDevice();
+zStage = mmc.getFocusDevice();
+double currentX, currentY, currentZ;
+originX=-75385;
+originY=331012;
+double gapX=19500;
+double gapY=19500;
+
+camera = mmc.getCameraDevice();
+double defaultExposure;
+boolean cameraAutoExposure = true;
+double exposureFractionOfFrame = 0.8;    // max exposure = 80% of frame interval
+double maxExposureMS = 26.6;             // recalculated from fps after the dialog
+boolean reAutoExposeEachPeriod = true;   // re-run auto-exposure before each period
+
+String autoExposeType="Once";
+String cameraWidth="500";
+String cameraHeight="1000";
+
+String arduinoPort="Arduino";
+String arduinoAddress="COM4";
+
+plateLayout(boolean[] wellPlan,double originXin, double originYin, double gapXin,double gapYin,xyStg,zStg) {
+
+	boolean[] wells = wellPlan;
+	double gapX=gapXin;
+	double gapY=gapYin;
+	double originX=originXin;
+	double originY=originYin;
+	double originZ=0;
+	wellOrder = new int[] {0,6,12,18,19,13,7,1,2,8,14,20,21,15,9,3,4,10,16,22,23,17,11,5};
+	double[] xPos = new double[6];
+	double[] yPos = new double[4];
+	int currentWell;
+
+	xyStage=xyStg;
+	zStage=zStg;
+
+	for (x=0; x<6; x++) {
+		xPos[x]=x*gapX;
+	}
+	for (y=0; y<4; y++) {
+		yPos[y]=y*gapY;
+	}
+	findNextWell(int x) {
+		while (x<wells.length && wells[wellOrder[x]]==false ) {
+			x++;
+		}
+		if (x<wells.length) {
+			return(x);
+		} else {
+			return(-1);
+		}
+	}
+	setOrigin(double x,double y, double z) {
+		originX=x;
+		originY=y;
+		originZ=z;
+	}
+	getCurrentWellPosition() {
+		x=xPos[wellOrder[currentWell] % 6] + originX;
+		y=yPos[(int) Math.floor(wellOrder[currentWell] / 6)] + originY;
+		MultiStagePosition p = new MultiStagePosition(xyStage,x,y,zStage,mmc.getPosition(zStage));
+		logOutput("current well X: "+x+" Y: "+y);
+		return(p);
+	}
+	nextWell() {
+		currentWell=findNextWell(++currentWell);
+		if (currentWell < 0) {   // no more selected wells
+			return(-1);
+		}
+		return(getWell());
+	}
+	getWell() {
+		if (currentWell>=0) {
+			return(wellOrder[currentWell]);
+		} else {
+			logOutput("invalid currentWell");
+			return(-1);
+		}
+	}
+	setToStart() {
+		logOutput("Reset plate");
+		currentWell=0;
+		return(wellOrder[currentWell]);
+	}
+	currentWell=findNextWell(0);
+	return(this);
+}
+
+boolean acquireWell(savePath,baseName,wellName,paceArray,nrFrames,secondsDelay,port,cameraAutoExposure) {
+	double exposureMS;
+
+	nrChannels = nrSlices = nrPositions = 1;
+
+	width = (int) mmc.getImageWidth();
+	height = (int) mmc.getImageHeight();
+	bytesPerPixel = (int) mmc.getBytesPerPixel();
+	bitDepth = (int) mmc.getImageBitDepth();
+	camera=mmc.getCameraDevice();
+
+	logOutput("acquire one well "+cameraAutoExposure);
+	for (i=0; i<paceArray.length; i++) {
+		rate=Integer.parseInt(paceArray[i]);
+		logOutput("rate: "+rate);
+
+		if (!cameraAutoExposure) {
+			exposureMS=mmc.getExposure();
+			logOutput("exposure: "+exposureMS);
+		}
+		if (cameraAutoExposure && reAutoExposeEachPeriod) {
+			runAutoExposure(arduinoPort, 500);
+		} else if (cameraAutoExposure) {
+			arduinoWhite(arduinoPort);
+			mmc.sleep(500);
+			mmc.snapImage();
+		}
+
+		arduinoRun(arduinoPort,rate);
+		mmc.sleep(secondsDelay*1000);
+		logOutput("Starting acquisition nrFrames "+nrFrames);
+		String acquisitionName=baseName+"_"+wellName + "_"+String.valueOf(rate);
+		acqName = gui.getUniqueAcquisitionName(acquisitionName);
+		gui.openAcquisition(acqName, savePath,
+		nrFrames, nrChannels, nrSlices, nrPositions,
+		false,
+		true);
+		gui.initializeAcquisition(acqName, width, height, bytesPerPixel, bitDepth);
+
+		// warn if the sequence buffer cannot hold the whole recording
+		long bufferMB = mmc.getCircularBufferMemoryFootprint();
+		long bufferFrames = (bufferMB * 1024L * 1024L) / ((long)width * height * bytesPerPixel);
+		if (bufferFrames < nrFrames) {
+			logOutput("WARNING: sequence buffer holds " + bufferFrames + " frames but "
+				+ nrFrames + " were requested. Increase Tools > Options > Sequence buffer size.");
+		}
+
+		// start from an empty buffer and re-apply the frame rate
+		mmc.clearCircularBuffer();
+		double tFirst = -1;
+		double tLast = -1;
+		try {
+			mmc.setProperty(camera,"AcquisitionFramerateEnable",1);
+			mmc.setProperty(camera,"AcquisitionFramerate",fps);
+		} catch (e) {
+			logOutput("note: could not set camera frame rate: " + e);
+		}
+		double intervalMs = 1000.0 / (double)fps;
+		flushCamera(intervalMs);
+
+		// Request more images than needed and stop once nrFrames distinct frames
+		// are saved. (Letting the camera finish a sequence on its own made it
+		// deliver every frame twice in the following recording.)
+		mmc.startSequenceAcquisition(2 * nrFrames + 60, intervalMs, true);
+		int duplicates = 0;
+		prevPix = null;
+		int frame = 0;
+		while ((mmc.getRemainingImageCount() > 0 || mmc.isSequenceRunning(camera)) && frame < nrFrames) {
+			if (mmc.getRemainingImageCount() > 0) {
+				img = mmc.popNextTaggedImage();
+				if (isDuplicateImage(prevPix, img.pix)) {   // skip exact copies
+					duplicates++;
+					continue;
+				}
+				prevPix = img.pix;
+				gui.addImageToAcquisition(acqName, frame, 0, 0, 0, img);
+				frame++;
+				// timestamps of first and last saved frame, for the frame-rate check
+				try {
+					double t = Double.parseDouble(img.tags.get("ElapsedTime-ms").toString());
+					if (tFirst < 0) tFirst = t;
+					tLast = t;
+				} catch (e) { }
+			} else {
+				mmc.sleep(2);
+			}
+		}
+		mmc.stopSequenceAcquisition();
+		mmc.sleep(100);
+		mmc.clearCircularBuffer();
+		if (tFirst >= 0 && tLast > tFirst && frame > 1) {
+			double measuredFps = (frame - 1) / ((tLast - tFirst) / 1000.0);
+			logOutput("measured frame rate: " + (Math.round(measuredFps * 10) / 10.0) + " fps");
+		}
+		if (duplicates > 0) {
+			logOutput("WARNING: " + duplicates + " duplicate images discarded");
+		}
+		logOutput("Completed acquisition");
+
+		logOutput("turning off pacer");
+		arduinoStop(arduinoPort);
+
+		logOutput("frames saved: " + frame + " of " + nrFrames + " requested");
+		if (mmc.isBufferOverflowed()) {
+			logOutput("WARNING: sequence buffer overflowed; acquisition stopped early.");
+		}
+
+	}
+	return(true);
+}
+
+arduinoAttach(arduinoPort,arduinoAddress) {
+	try {
+		mmc.unloadDevice(arduinoPort);
+	} catch(msg) {
+		logOutput("caught error: "+msg);
+	}
+	mmc.loadDevice(arduinoPort, "SerialManager", arduinoAddress);
+	mmc.setProperty(arduinoPort, "BaudRate",9600);
+	mmc.setProperty(arduinoPort, "AnswerTimeout",2000);
+	mmc.initializeDevice(arduinoPort);
+	print("Successfully set up Arduino");
+}
+
+boolean arduinoCheck(arduinoPort) {
+	mmc.setSerialPortCommand(arduinoPort,"IDaa","\r");
+		return(true);
+}
+
+arduinoRun(arduinoPort, rate) {
+	msg="RUNa";
+	val="0000"+rate;
+	msg=msg+val.substring(val.length()-4,val.length());
+	mmc.setSerialPortCommand(arduinoPort,msg,"\r");
+}
+
+arduinoStop(arduinoPort) {
+	mmc.setSerialPortCommand(arduinoPort,"STOP","\r");
+}
+
+arduinoWhite(port) {
+	mmc.setSerialPortCommand(port,"WHIT","\r");
+}
+
+arduinoFocus(arduinoPort,val) {
+	if (val<0) {
+		val="0000"+(-1*val);
+		msg="FaDN";
+	} else {
+		val="0000"+val;
+		msg="FaUP";
+	}
+	msg=msg+val.substring(val.length()-4,val.length());
+	mmc.setSerialPortCommand(arduinoPort,msg,"\r");
+}
+
+logOutput(s) {
+	if (debug==true) {
+		print(s);
+	}
+	return;
+}
+
+// True if two images have identical pixels
+isDuplicateImage(a, b) {
+	if (a == null || b == null) return false;
+	if (a == b) return true;
+	try {
+		if (a instanceof byte[] && b instanceof byte[]) return java.util.Arrays.equals((byte[]) a, (byte[]) b);
+		if (a instanceof short[] && b instanceof short[]) return java.util.Arrays.equals((short[]) a, (short[]) b);
+	} catch (e) { }
+	return false;
+}
+
+// Run the camera for 0.5 s and discard everything it delivers, so frames left
+// over in the camera driver are not saved in the next recording.
+flushCamera(double intervalMs) {
+	mmc.startSequenceAcquisition(100000, intervalMs, false);
+	long tEnd = System.currentTimeMillis() + 500;
+	while (System.currentTimeMillis() < tEnd) {
+		while (mmc.getRemainingImageCount() > 0) {
+			mmc.popNextTaggedImage();
+		}
+		mmc.sleep(5);
+	}
+	mmc.stopSequenceAcquisition();
+	mmc.sleep(50);
+	mmc.clearCircularBuffer();
+}
+
+// Re-run camera auto-exposure under white light
+runAutoExposure(port, int settleMS) {
+	mmc.setProperty(camera, "ExposureAuto", autoExposeType);
+	arduinoWhite(port);
+	mmc.sleep(settleMS);
+	for (int k=0; k<10; k++) {
+		mmc.snapImage();
+	}
+}
+
+mmc.setProperty(xyStage,"TransposeMirrorX",TransposeMirror);
+mmc.setProperty(xyStage,"TransposeMirrorY",TransposeMirror);
+logOutput("current stage X="+mmc.getXPosition(xyStage)+", Y= "+mmc.getYPosition(xyStage));
+logOutput("origin X="+originX+", Y= "+originY);
+
+mmc.stopSequenceAcquisition();
+
+arduinoAttach(arduinoPort,arduinoAddress);
+mmc.sleep(2000);
+if (!arduinoCheck(arduinoPort) ) {
+	logOutput("fatal error: unable to connect to Arduino");
+	exit();
+} else logOutput("Arduino connected");
+
+GenericDialog dlg = new GenericDialog("EHT Acquisition Parameters");
+
+gui.closeAllAcquisitions();
+
+rowLabels = new String[] {"A","B","C","D"," "};
+columnLabels = new String[] {"1","2","3","4","5","6","-all-row"};
+
+maxwells=(rowLabels.length)*(columnLabels.length);
+
+boolean[] chkDefaults = new boolean[maxwells];
+boolean[] chkVals = new boolean[maxwells];
+boolean[] wells = new boolean[(rowLabels.length-1)*(columnLabels.length-1)];
+dlg.addMessage("Select the wells to image");
+
+for (i=0;i<chkDefaults.length;i++) {
+	chkDefaults[i]= false;
+}
+
+String[] labels = new String[maxwells];
+
+for (i=0; i < rowLabels.length; i++) {
+	for (j=0; j < columnLabels.length; j++) {
+		labels[(i*columnLabels.length)+j] = rowLabels[i]+columnLabels[j];
+	}
+}
+
+i=rowLabels.length-1;
+j=columnLabels.length-1;
+labels[(i*columnLabels.length)+j]="all";
+
+for (j=0; j < columnLabels.length-1; j++) {
+	labels[(i*columnLabels.length)+j] = "all-col"+columnLabels[j];
+}
+
+dlg.addCheckboxGroup(5,7, labels , chkDefaults);
+
+String[] wellChooser=new String[] {"Use above selection","Do not move stage"};
+dlg.addRadioButtonGroup("Stage control: ",wellChooser,1,2,"Use above selection");
+dlg.addMessage(" ");
+dlg.addStringField("Acquisition frames per second (integer): ","   30");
+dlg.addStringField("Pacing beats per minute per period (e.g. 60:120:150): ","   60");
+dlg.addStringField("Seconds delay for each well before beginning capture (integer): ","  10");
+dlg.addStringField("Seconds per period (integer): ","   30");
+dlg.addStringField("Milliseconds for default exposure (double, 0=camera auto exp.): ","    0");
+dlg.addStringField("Basename of acquisition: ",fName);
+
+dlg.addStringField("well A1 position X: ",String.valueOf(originX));
+dlg.addStringField("well A1 position Y: ",String.valueOf(originY));
+dlg.addStringField("Movement between wellS, horizontal: ",String.valueOf(gapX));
+dlg.addStringField("Movement between wells, vertical: ",String.valueOf(gapY));
+dlg.addCheckbox("Set stage coordinates to well A1", false);
+
+dlg.addMessage("Fill in the values, focus, and press OK");
+dlg.showDialog();
+
+if (dlg.wasCanceled() ) {
+	return;
+}
+
+for (i=0; i<rowLabels.length; i++) {
+	for (j=0; j<columnLabels.length; j++) {
+		chkVals[(i*columnLabels.length)+j] = dlg.getNextBoolean();
+	}
+}
+for (i=0; i<rowLabels.length-1; i++) {
+	for (j=0; j<columnLabels.length-1; j++) {
+		wells[i*(columnLabels.length-1)+j]=chkVals[i*columnLabels.length+j];
+	}
+}
+if (chkVals[chkVals.length-1]==true) {
+	for (i=0; i<wells.length; i++) {
+		wells[i]=true;
+	}
+}
+for (j=0; j<columnLabels.length-1; j++) {
+	if (chkVals[4*columnLabels.length+j]==true) {
+		for (i=0; i<rowLabels.length-1; i++) {
+			wells[i*(columnLabels.length-1)+j]=true;
+		}
+	}
+}
+for (i=0; i<rowLabels.length-1; i++) {
+	if (chkVals[i*columnLabels.length+columnLabels.length-1]==true) {
+		for (j=0; j<columnLabels.length-1; j++) {
+			wells[i*(columnLabels.length-1)+j]=true;
+		}
+	}
+}
+
+fps = Integer.parseInt(dlg.getNextString().trim());
+paceString = dlg.getNextString().trim();
+paceArray=paceString.split(":");
+secondsDelay = Integer.parseInt(dlg.getNextString().trim());
+secondsPerPeriod = Integer.parseInt(dlg.getNextString().trim());
+String s = dlg.getNextString().trim();
+defaultExposure=Double.valueOf(s);
+
+camera = mmc.getCameraDevice();
+maxExposureMS = Math.floor(exposureFractionOfFrame * 10000.0 / (double)fps) / 10.0;   // rounded down to 0.1 ms
+if (defaultExposure == 0) {
+	cameraAutoExposure=true;
+	defaultExposure=maxExposureMS;
+} else {
+	cameraAutoExposure=false;
+	if (defaultExposure > maxExposureMS) {
+		logOutput("WARNING: exposure " + defaultExposure + " ms is too long for " + fps
+			+ " fps; using " + maxExposureMS + " ms.");
+		defaultExposure=maxExposureMS;
+	}
+}
+
+if (cameraAutoExposure) {
+	print("warning: if autoexposure is greater than the frame duration then the frame rate will be lower than requested.");
+}
+
+fName = dlg.getNextString();
+fName.trim();
+
+String wellSelector=dlg.getNextRadioButton();
+boolean wellSelectorFlag;
+if (wellSelector.equals("Use above selection")) {
+	wellSelectorFlag = true;
+} else {
+	wellSelectorFlag = false;
+}
+
+if (debug==true) {
+	for (i=0; i<wells.length; i++) {
+		print(i + ": "+ wells[i]);
+	}
+	print("frames per second: "+fps);
+	print("pace string: "+paceString);
+	print("seconds per period: "+secondsPerPeriod);
+}
+
+originX=Integer.parseInt(dlg.getNextString().trim());
+originY=Integer.parseInt(dlg.getNextString().trim());
+gapX=Double.parseDouble(dlg.getNextString().trim());
+gapY=Double.parseDouble(dlg.getNextString().trim());
+resetStageCoord=dlg.getNextBoolean();
+
+print("gap x,y: "+gapX+", "+gapY);
+	
+DirectoryChooser chooser = new DirectoryChooser("Choose the output directory");
+savePath = chooser.getDirectory();
+if (savePath != null && savePath.toLowerCase().indexOf("dropbox") >= 0) {
+	logOutput("WARNING: saving into Dropbox. Syncing during acquisition can stall "
+		+ "disk writes; a local SSD folder is recommended.");
+}
+baseName=fName;
+
+myPlate = plateLayout(wells,originX,originY,gapX,gapY,xyStage,zStage);
+
+if (resetStageCoord) {
+	originX=mmc.getXPosition(xyStage);
+	originY=mmc.getYPosition(xyStage);
+}
+
+myPlate.setOrigin(originX,originY,currentZ);
+logOutput("Origin: "+originX+", "+originY);
+
+wellNumber=myPlate.getWell();
+MultiStagePosition msp;
+
+mmc.setProperty(camera,"AcquisitionFramerate",fps);
+mmc.setProperty(camera,"AcquisitionFramerateEnable",1);
+mmc.setProperty(camera,"PixelType","Mono8");
+mmc.setProperty(camera,"SensorHeight",cameraHeight);
+mmc.setProperty(camera,"SensorWidth",cameraWidth);
+
+mmc.setExposure(defaultExposure);
+if (cameraAutoExposure==true) {
+	mmc.setProperty(camera,"ExposureAuto",autoExposeType);
+	arduinoWhite(arduinoPort);
+	mmc.sleep(1000);
+	for (i=0; i<10; i++)
+		mmc.snapImage();
+} else {
+	mmc.setProperty(camera,"ExposureAuto","Off");
+	mmc.setExposure(defaultExposure);
+	logOutput("Expsoure: Manual "+defaultExposure);
+}
+
+nrFrames=fps*secondsPerPeriod;
+
+if (wellSelectorFlag == true) {
+	logOutput("---- Starting acquisition ----");
+	while (wellNumber>=0) {
+		col=wellNumber % 6;
+		row=Math.floor(wellNumber / 6);
+		wellName=labels[(int)row*7+col];
+		logOutput("Well: "+wellName);
+		msp=myPlate.getCurrentWellPosition();
+		mmc.setXYPosition(xyStage,msp.getX(),msp.getY());
+		mmc.waitForDevice(xyStage);
+		acquireWell(savePath, baseName, wellName,paceArray,nrFrames,secondsDelay,arduinoPort,cameraAutoExposure);
+		wellNumber = myPlate.nextWell();
+	}
+	i=myPlate.setToStart();
+	msp=myPlate.getCurrentWellPosition();
+	mmc.setXYPosition(xyStage,msp.getX(),msp.getY());
+} else {
+	wellName="Current";
+	logOutput("Acquire current position");
+	acquireWell(savePath, baseName, wellName,paceArray,nrFrames,secondsDelay,arduinoPort,cameraAutoExposure);
+}
+
+logOutput("done");
+logOutput("Data location: "+savePath);
+logOutput("Expt name: "+baseName);
+IJ.showMessage("Completed acquisition");
